@@ -1,0 +1,12 @@
+H = 512
+NH = 8
+KVH = 8
+HD = H // NH
+NL = 4
+NE = 16
+TOPK = 4
+EI = 256
+VS = 157184
+EPS = 1e-05
+THETA = 50000.0
+MASK_ID = 156895
