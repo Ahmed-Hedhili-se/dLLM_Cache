@@ -1,68 +1,47 @@
-"""  The decision-making layer that ties token_tracker.py to the caches.
-Given a StepDiff (from TokenTracker), this module decides exactly
-which positions need a fresh forward pass at a given layer, and how
-to merge cached results back in for the rest — without storing
-anything itself.
-"""
+import torch
 
-from dataclasses import dataclass
-from typing import Dict, List
-from .token_tracker import StepDiff
-
-
-@dataclass
-class ComputePlan:
-    layer_index: int
-    recompute_positions: List[int]
-    reuse_positions: List[int]
-
-    def __repr__(self):
-        return (
-            f"ComputePlan(layer={self.layer_index}, "
-            f"recompute={len(self.recompute_positions)}, "
-            f"reuse={len(self.reuse_positions)})"
-        )
-
-
-def build_compute_plan(
-    diff: StepDiff, layer_index: int,
-    cache, force_full_recompute: bool = False
-) -> ComputePlan:
+def gather_tokens(tensor: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
     """
-    Decides which positions must be recomputed at `layer_index` this
-    step, versus which can be pulled from `cache` (any object exposing
-    get_layer(layer_index, positions) -> {position: value}, e.g.
-    HiddenCache or AttentionCache).
-
-    A position is only reused if BOTH:
-      - it was STABLE this step (per the token tracker), and
-      - a cached value actually exists for it at this layer.
-    Anything revealed this step, or missing from cache, gets recomputed.
+    Gathers tokens from the full sequence based on indices.
+    
+    Args:
+        tensor: [B, T, ...] - The full feature tensor.
+        indices: [B, S] - The indices of tokens to gather (S <= T).
+        
+    Returns:
+        gathered_tensor: [B, S, ...] - The gathered feature tensor.
     """
-    if force_full_recompute:
-        all_positions = diff.stable_positions + diff.revealed_positions
-        return ComputePlan(layer_index=layer_index, recompute_positions=all_positions, reuse_positions=[])
-
-    cached = cache.get_layer(layer_index, diff.stable_positions)
-    reuse_positions = list(cached.keys())
-    stale_positions = [p for p in diff.stable_positions if p not in cached]
-
-    recompute_positions = diff.revealed_positions + stale_positions
-
-    return ComputePlan(
-        layer_index=layer_index,
-        recompute_positions=recompute_positions,
-        reuse_positions=reuse_positions,
-    )
+    B, T = tensor.shape[:2]
+    S = indices.shape[1]
+    
+    # Expand indices to match the trailing dimensions of the tensor
+    # e.g., if tensor is [B, T, D], indices must become [B, S, D]
+    expanded_indices = indices.view(B, S, *([1] * (tensor.dim() - 2)))
+    expanded_indices = expanded_indices.expand(-1, -1, *tensor.shape[2:])
+    
+    return torch.gather(tensor, dim=1, index=expanded_indices)
 
 
-def merge_computed_and_cached(
-    computed: Dict[int, object], 
-    cached: Dict[int, object], seq_len: int, fill=None
-) -> list:
-    merged = [fill] * seq_len
-    for pos, value in cached.items():
-        merged[pos] = value
-    for pos, value in computed.items():
-        merged[pos] = value  # freshly computed values take priority over cached ones
-    return merged
+def scatter_tokens(full_tensor: torch.Tensor, partial_tensor: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
+    """
+    Scatters partially updated tokens back into the full tensor.
+    
+    Args:
+        full_tensor: [B, T, ...] - The original, full-length feature tensor (will be cloned or modified).
+        partial_tensor: [B, S, ...] - The updated features for the selected tokens.
+        indices: [B, S] - The indices corresponding to the partial_tensor.
+        
+    Returns:
+        updated_tensor: [B, T, ...] - The full tensor with scattered updates.
+    """
+    B, T = full_tensor.shape[:2]
+    S = indices.shape[1]
+    
+    expanded_indices = indices.view(B, S, *([1] * (full_tensor.dim() - 2)))
+    expanded_indices = expanded_indices.expand(-1, -1, *full_tensor.shape[2:])
+    
+    # We clone to avoid in-place modification issues, though it could be optimized depending on use case.
+    updated_tensor = full_tensor.clone()
+    updated_tensor.scatter_(dim=1, index=expanded_indices, src=partial_tensor)
+    
+    return updated_tensor

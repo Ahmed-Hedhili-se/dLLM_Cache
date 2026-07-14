@@ -1,103 +1,42 @@
+import torch
+import torch.nn.functional as F
+import math
 """
-This module knows nothing about embeddings, hidden states, attention,
-or MoE routing — it only tracks token IDs and their masked/stable/
-revealed status over time. Every other cache file builds on the
-answer this file provides."""
-
-from dataclasses import dataclass ,field
-from typing import List, Optional
-from enum import Enum
-
-class TokeniState(Enum):
-    MASKED = "masked"
-    STABLE = "stable"
-    REVEALED = "revealed"
-
-@dataclass
-class StepDiff:
-    step: int
-    revealed_positions: List[int] = field(default_factory=list)
-    stable_positions: List[int] = field(default_factory=list)
-    masked_positions: List[int] = field(default_factory=list)
-
-    @property
-    def dirty_positions(self) ->  List[int]:
-        return self.revealed_positions 
+    Implements the V-verify mechanism to select tokens for adaptive partial updates.
+    It computes the cosine similarity between current and cached Value vectors,
+    and selects the tokens with the lowest similarity scores.
+"""
+class TokenTracker:
     
-    def __repr__(self) -> str:
-        return (
-            f"StepDiff(step={self.step}, "
-            f"revealed_positions={self.revealed_positions}, "
-            f"stable_positions={self.stable_positions}, "
-            f"masked_positions={self.masked_positions})"
-        )
     
+    def __init__(self, update_ratio: float = 0.25):
+        self.update_ratio = update_ratio
 
-class TokenTracker : 
-    """
-    Compares the token sequence at each step against the previous step
-    to classify every position as MASKED, REVEALED, or STABLE.
- 
-    Usage:
-        tracker = TokenTracker(mask_token_id=0)
-        for step, tokens in enumerate(diffusion_steps):
-            diff = tracker.update(step, tokens)
-            # diff.dirty_positions  -> must be recomputed
-            # diff.stable_positions -> safe to reuse from cache
-    """
-    def __init__(self, mask_token_id: int):
-        self.mask_token_id = mask_token_id
-        self._previous_tokens: Optional[List[int]] = None
-        self._history: List[StepDiff] = []
-
-    def reset(self) : 
-        self._previous_tokens = None
-        self._history = []
-    
-    def update (self , step: int , tokens : List[int]) ->StepDiff: 
-        revealed, stable , masked = [], [], []
-        for pos , token_id in enumerate(tokens): 
-            if token_id == self.mask_token_id: 
-                masked.append(pos)
-                continue
-            was_masked_or_new =(
-                self._previous_tokens is None
-                or pos >= len(self._previous_tokens)
-                or self._previous_tokens[pos] == self.mask_token_id
-            )
-            changed_value = (
-                self._previous_tokens is not None
-                and pos < len(self._previous_tokens)
-                and self._previous_tokens[pos] != token_id
-            )
-
-            if was_masked_or_new and changed_value:
-                revealed.append(pos)
-            else :
-                stable.append(pos)
-
-        diff = StepDiff(
-            step=step,
-            revealed_positions=revealed,
-            stable_positions=stable,
-            masked_positions=masked
-        )
-        self._history.append(diff)
-        self._previous_tokens = tokens
-        return diff
-    
+    def verify(self, current_v: torch.Tensor, cached_v: torch.Tensor) -> torch.Tensor:
+        """
+        Computes cosine similarity (Eq. 7) and selects the bottom tokens.
+        
+        Args:
+            current_v: [B, T, ...] - The newly computed Value vectors for response tokens.
+            cached_v: [B, T, ...] - The cached Value vectors from the previous step.
+            
+        Returns:
+            indices: [B, S] - The indices of the tokens to be updated, sorted in ascending order.
+                              S = floor(update_ratio * T).
+        """
+        B, T = current_v.shape[:2] 
 
 
-    def history(self) ->  List[StepDiff]:
-        return self._history
-    
+        v_c = current_v.reshape(B, T, -1)
+        v_p = cached_v.reshape(B, T, -1)
 
-    def stable_ratio(self )-> float : 
-        if not self._history:
-            return 0.0
-        latest = self._history[-1]
-        unmasked = len(latest.stable_positions) + len(latest.revealed_positions)
-        if unmasked == 0:
-            return 0.0
-        return len(latest.stable_positions) / unmasked
-
+        similarity = F.cosine_similarity( v_c, v_p, dim=-1)
+        num_tokens_to_update = math.floor(self.update_ratio * T)
+        
+        if num_tokens_to_update == 0 :
+            return torch.empty( (B, 0), dtype=torch.long, device=current_v.device)
+            
+        _, indices = torch.topk(similarity, k=num_tokens_to_update, dim=-1, largest=False)
+        indices, _ = torch.sort(indices, dim=-1)
+        
+        return indices
