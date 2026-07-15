@@ -51,11 +51,24 @@ class AttentionCache:
         return k, v, attn_out
 
 
+    def get_prompt(self) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        k_p = self._k.get_prompt()
+        v_p = self._v.get_prompt()
+        attn_out_p = self._attn_out.get_prompt()
+        if k_p is None or v_p is None or attn_out_p is None:
+            return None, None, None
+        return k_p, v_p, attn_out_p
+
+    def get_response(self) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        k_r = self._k.get_response()
+        v_r = self._v.get_response()
+        attn_out_r = self._attn_out.get_response()
+        if k_r is None or v_r is None or attn_out_r is None:
+            return None, None, None
+        return k_r, v_r, attn_out_r
 
     def get_cached_v_response(self) -> Optional[torch.Tensor]:
         return self._v.get_response()
-
-
 
     def reset(self) -> None:
         self._k.reset()

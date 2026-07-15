@@ -24,7 +24,6 @@ class MoEBlock(nn.Module):
     ) -> torch.Tensor:
         B, T, _ = x.shape
         
-        # Backward compatibility if caching is disabled
         if cache is None or cache_manager is None or k_step is None:
             return self._compute_moe(x)
 
@@ -34,7 +33,6 @@ class MoEBlock(nn.Module):
 
         out_full = torch.zeros_like(x)
 
-        # --- 1. PROMPT BRANCH ---
         if is_initial or is_prompt_up:
             out_p = self._compute_moe(x[:, :prompt_len])
             out_full[:, :prompt_len] = out_p
@@ -42,7 +40,7 @@ class MoEBlock(nn.Module):
         else:
             out_full[:, :prompt_len] = cache.get_prompt()
 
-        # --- 2. RESPONSE BRANCH ---
+       
         if is_initial or is_resp_full:
             out_r = self._compute_moe(x[:, prompt_len:])
             out_full[:, prompt_len:] = out_r

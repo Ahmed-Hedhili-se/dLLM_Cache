@@ -26,8 +26,6 @@ class LLaDAMoESmall(nn.Module):
         update_ratio: float = 0.25
     ) -> torch.Tensor:
         B, T = input_ids.shape
-        
-        # 1. Handle Embedding Caching
         embed_cache = caches.get('embed') if caches is not None else None
         if embed_cache is not None and cache_manager is not None and k_step is not None:
             is_initial = cache_manager.is_initial_step(k_step)
@@ -37,19 +35,17 @@ class LLaDAMoESmall(nn.Module):
                 x = self.embed_tokens(input_ids)
                 embed_cache.update_prompt(x[:, :prompt_len])
             else:
-                # Prompt embedding is retrieved from cache, response token embeddings are computed
                 cached_prompt_embeds = embed_cache.get_prompt()
                 response_embeds = self.embed_tokens(input_ids[:, prompt_len:])
                 x = torch.cat([cached_prompt_embeds, response_embeds], dim=1)
         else:
             x = self.embed_tokens(input_ids)
             
-        # 2. Build RoPE positional freqs
+        
         cos, sin = build_rope_freqs(T, HD, THETA, input_ids.device)
         cos = cos.to(x.dtype)
         sin = sin.to(x.dtype)
         
-        # 3. Propagate layer caches and parameters down the layers
         layer_caches = caches.get('layers') if caches is not None else None
         for i, layer in enumerate(self.layers):
             layer_cache = layer_caches[i] if layer_caches is not None else None
@@ -66,6 +62,10 @@ class LLaDAMoESmall(nn.Module):
             
         return self.lm_head(self.norm(x))
 
+
+
+
+####################################
 if __name__ == '__main__':
     import sys
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
