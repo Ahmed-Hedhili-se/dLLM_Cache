@@ -1,5 +1,12 @@
 # dLLM-Cache
 
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen)]()
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
+A PyTorch implementation of **dLLM-Cache**...
+
 A PyTorch implementation of **dLLM-Cache** — a training-free KV-cache acceleration framework for **Diffusion Large Language Models (dLLMs)**, applied to a parameter-reduced version of [LLaDA-MoE-7B-A1B-Instruct](https://huggingface.co/inclusionAI/LLaDA-8B-Instruct).
 
 ---
@@ -260,17 +267,7 @@ dLLM-cache/
 └── main.py
 ```
 
----
 
-## References
 
-- **dLLM-Cache**: [arXiv:2506.06295](https://arxiv.org/abs/2506.06295)
-- **LLaDA**: [arXiv:2509.24389](https://arxiv.org/abs/2509.24389)
-- **LLaDA-MoE-7B-A1B-Instruct** (base checkpoint, reduced): [HuggingFace](https://huggingface.co/inclusionAI/LLaDA-MoE-7B-A1B-Instruct)
-- **MIT License**
-
----
-
-## License
 
 This project is licensed under the **MIT License**.
