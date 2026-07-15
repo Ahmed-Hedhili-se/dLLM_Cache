@@ -1,9 +1,12 @@
 # dLLM-Cache
 
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![Status](https://img.shields.io/badge/Status-Active-brightgreen)]()
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+## References
+
+[![dLLM-Cache Paper](https://img.shields.io/badge/arXiv-2506.06295-b31b1b?logo=arxiv)](https://arxiv.org/abs/2506.06295)
+
+[![LLaDA Paper](https://img.shields.io/badge/arXiv-2509.24389-b31b1b?logo=arxiv)](https://arxiv.org/abs/2509.24389)
+
+[![HuggingFace](https://img.shields.io/badge/HuggingFace-LLaDA--MoE--7B--A1B-yellow?logo=huggingface)](https://huggingface.co/inclusionAI/LLaDA-MoE-7B-A1B-Instruct)
 
 A PyTorch implementation of **dLLM-Cache**...
 
