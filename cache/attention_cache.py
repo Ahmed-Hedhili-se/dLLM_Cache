@@ -1,55 +1,63 @@
 import torch
 from typing import Optional, Tuple
+
+from .base_cache import BaseCache
 from .selective_compute import scatter_tokens
 
+
 class AttentionCache:
+
     def __init__(self):
-        self.k_p: Optional[torch.Tensor] = None
-        self.v_p: Optional[torch.Tensor] = None
-        self.attn_out_p: Optional[torch.Tensor] = None
-        
-        self.k_r: Optional[torch.Tensor] = None
-        self.v_r: Optional[torch.Tensor] = None
-        self.attn_out_r: Optional[torch.Tensor] = None
-        
-        self.prompt_len: int = 0
+        self._k = BaseCache()
+        self._v = BaseCache()
+        self._attn_out = BaseCache()
 
+    @property
+    def prompt_len(self) -> int:
+        return self._k.prompt_len
 
+    def update_prompt(self, k: torch.Tensor, v: torch.Tensor, attn_out: torch.Tensor, prompt_len: int) -> None:
+        self._k.update_prompt(k, prompt_len)
+        self._v.update_prompt(v, prompt_len)
+        self._attn_out.update_prompt(attn_out, prompt_len)
 
-    def update_prompt( self, k : torch.Tensor, v: torch.Tensor, attn_out : torch.Tensor, prompt_len: int):
-        self.k_p = k.clone().detach()    if     k is not None else None
-        self.v_p = v.clone().detach()    if     v is not None else None
-        self.attn_out_p = attn_out.clone().detach() if attn_out is not None else None
-        self.prompt_len = prompt_len
+    def update_response(self, k: torch.Tensor, v: torch.Tensor, attn_out: torch.Tensor) -> None:
+        self._k.update_response(k)
+        self._v.update_response(v)
+        self._attn_out.update_response(attn_out)
 
-    def update_response(self, k: torch.Tensor, v: torch.Tensor, attn_out: torch.Tensor):
-        self.k_r = k.clone().detach() if k is not None else None
-        self.v_r = v.clone().detach() if v is not None else None
-        self.attn_out_r = attn_out.clone().detach() if attn_out is not None else None
-
-
-    def update_response_partial(self, partial_k: torch.Tensor, new_v: torch.Tensor, partial_attn_out: torch.Tensor, indices: torch.Tensor):
+    def update_response_partial(
+        self, partial_k: torch.Tensor, new_v: torch.Tensor, partial_attn_out: torch.Tensor , indices : torch.Tensor
+    ) -> None:
+        """  Adaptive partial update. Overwrites the full V_r cache (Section A.5
+        of the paper) but only scatters K and AttnOut for the selected tokens.
         """
-        Adaptive partial update. Overwrites the full V_r cache (Section A.5 of paper)
-        but only scatters K and AttnOut for the selected tokens.
-        """
-        if self.k_r is None or self.attn_out_r is None:
+        if self._k.response_cache is None or self._attn_out.response_cache is None:
             raise RuntimeError("Cannot perform partial update before a full refresh has initialized the cache.")
-            
-        self.v_r = new_v.clone().detach()
-        self.k_r = scatter_tokens(self.k_r, partial_k, indices)
-        self.attn_out_r = scatter_tokens(self.attn_out_r, partial_attn_out, indices)
+
+        self._v.update_response(new_v)
+        self._k.response_cache = scatter_tokens(self._k.response_cache, partial_k, indices)
+        self._attn_out.response_cache = scatter_tokens(self._attn_out.response_cache, partial_attn_out, indices)
+
+
 
 
     def get_full(self) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        if self.k_p is None or self.k_r is None:
+        k = self._k.get_full()
+        v = self._v.get_full()
+        attn_out = self._attn_out.get_full()
+        if k is None or v is None or attn_out is None:
             return None, None, None
-        k = torch.cat( [self.k_p, self.k_r], dim=1)
-        v = torch.cat([self.v_p, self.v_r], dim=1)
-        attn_out = torch.cat([self.attn_out_p, self.attn_out_r], dim=1)
-        
         return k, v, attn_out
 
 
+
     def get_cached_v_response(self) -> Optional[torch.Tensor]:
-        return self.v_r
+        return self._v.get_response()
+
+
+
+    def reset(self) -> None:
+        self._k.reset()
+        self._v.reset()
+        self._attn_out.reset()
