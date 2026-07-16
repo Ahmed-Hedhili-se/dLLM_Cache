@@ -39,11 +39,7 @@ __global__ void gather_fp32_kernel(
 }
 
 
-void launch_gather_fp32(
-    torch::Tensor input,
-    torch::Tensor indices,
-    torch::Tensor output
-)
+void launch_gather_fp32(torch::Tensor input,  torch::Tensor indices, torch::Tensor output)
 {
     int B = input.size(0);
     int N = input.size(1);
