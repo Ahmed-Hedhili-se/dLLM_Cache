@@ -153,8 +153,15 @@ def run_profiler_benchmarks(engine, prompt):
 
 def main():
     device = inference_config.DEVICE
-    print(f"Initializing LLaDAMoESmall model on {device}...")
+    print(f"Initializing 7B Model (mapped to custom LLaDAMoE architecture) on {device}...")
     model = LLaDAMoESmall()
+    from models.loader import get_hf_weights_path, load_hf_weights_into_custom_model
+    try:
+        weights_path = get_hf_weights_path()
+        model = load_hf_weights_into_custom_model(model, weights_path)
+    except Exception as e:
+        print(f"Failed to load weights automatically: {e}")
+        print("Please ensure you have run download_weigts.py or have enough disk space.")
     if inference_config.USE_BFLOAT16:
         model = model.to(torch.bfloat16)
     model = model.to(device)
