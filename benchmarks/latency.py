@@ -24,6 +24,7 @@ except ImportError:
 
 @dataclass
 class LatencyResult:
+    name: str
     samples_ms: List[float] = field(default_factory=list)
 
     @property
