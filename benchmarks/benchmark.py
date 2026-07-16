@@ -73,18 +73,18 @@ def run_latency_benchmarks(baseline_model_fn, cached_model_fn, baseline_generato
     print(f"  Speedup: {base_step0.mean_ms / cache_step0.mean_ms:.2f}x")
     print()
     
-    # 3. Diffusion Step Latency (Step 1 - Adaptive Partial Update)
-    print("Measuring diffusion step 1 (Adaptive Partial Update) latency...")
-    base_step1 = measure_diffusion_step_latency(baseline_generator, tokens, step=1, editable=editable)
+    # 3. Diffusion Step Latency (Step 64 - Adaptive Partial Update)
+    print("Measuring diffusion step 64 (Adaptive Partial Update) latency...")
+    base_step64 = measure_diffusion_step_latency(baseline_generator, tokens, step=64, editable=editable)
     
     # Initialize cache by running step 0 first
     reset_caches_fn()
     cached_generator._denoise_step(tokens, 0, editable)
     
-    cache_step1 = measure_diffusion_step_latency(cached_generator, tokens, step=1, editable=editable)
-    print(f"  Baseline Step 1: {base_step1.mean_ms:.3f}ms")
-    print(f"  Cached Step 1:   {cache_step1.mean_ms:.3f}ms")
-    print(f"  Speedup: {base_step1.mean_ms / cache_step1.mean_ms:.2f}x")
+    cache_step64 = measure_diffusion_step_latency(cached_generator, tokens, step=64, editable=editable)
+    print(f"  Baseline Step 64: {base_step64.mean_ms:.3f}ms")
+    print(f"  Cached Step 64:   {cache_step64.mean_ms:.3f}ms")
+    print(f"  Speedup: {base_step64.mean_ms / cache_step64.mean_ms:.2f}x")
 
 
 def run_throughput_benchmarks(baseline_engine, cached_engine, tokens, editable, prompt, reset_caches_fn):
