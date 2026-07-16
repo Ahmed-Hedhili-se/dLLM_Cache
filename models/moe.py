@@ -31,17 +31,24 @@ class MoEBlock(nn.Module):
         is_prompt_up = cache_manager.is_prompt_update(k_step)
         is_resp_full = cache_manager.is_response_full_update(k_step)
 
+        if is_initial:
+            out = self._compute_moe(x)
+            out_p = out[:, :prompt_len]
+            out_r = out[:, prompt_len:]
+            cache.update_prompt(out_p, prompt_len)
+            cache.update_response(out_r)
+            return out
+
         out_full = torch.zeros_like(x)
 
-        if is_initial or is_prompt_up:
+        if is_prompt_up:
             out_p = self._compute_moe(x[:, :prompt_len])
             out_full[:, :prompt_len] = out_p
             cache.update_prompt(out_p, prompt_len)
         else:
             out_full[:, :prompt_len] = cache.get_prompt()
 
-       
-        if is_initial or is_resp_full:
+        if is_resp_full:
             out_r = self._compute_moe(x[:, prompt_len:])
             out_full[:, prompt_len:] = out_r
             cache.update_response(out_r)

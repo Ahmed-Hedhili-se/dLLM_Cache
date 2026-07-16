@@ -182,7 +182,7 @@ def main():
         })
     caches['layers'] = layer_caches
 
-    prompt_ids = list(range(1, 9))
+    prompt_ids = list(range(1, 129))
     prompt_len = len(prompt_ids)
 
     # 1. Baseline Engine
