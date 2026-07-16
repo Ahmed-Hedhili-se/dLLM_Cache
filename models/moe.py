@@ -71,8 +71,6 @@ class MoEBlock(nn.Module):
         
         for expert_idx in range(NE):
             idx, top_x = torch.where(expert_mask[expert_idx])
-            if top_x.numel() == 0:
-                continue
             h = self.experts[expert_idx](x_flat[top_x]) * routing_weights[top_x, idx, None]
             out.index_add_(0, top_x, h.to(x.dtype))
             
