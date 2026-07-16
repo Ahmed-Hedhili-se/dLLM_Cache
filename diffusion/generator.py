@@ -85,6 +85,8 @@ class DiffusionGenerator:
         num_to_reveal = max(0, num_should_be_unmasked - already_unmasked)
 
         if num_to_reveal == 0:
+            if step == 0:
+                self.model_fn(tokens)
             return tokens
 
         logits = self.model_fn(tokens)  # [seq_len, vocab_size]
