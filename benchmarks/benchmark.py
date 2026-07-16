@@ -4,6 +4,9 @@ import os
 import sys
 import types
 
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 import configs.cache_config as cache_config
 import configs.inference_config as inference_config
@@ -13,7 +16,6 @@ from cache import CacheManager, EmbeddingCache, AttentionCache, MoECache
 
 
 if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from benchmarks.latency import (
         measure_forward_latency,
         measure_diffusion_step_latency,
