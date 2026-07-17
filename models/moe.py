@@ -39,7 +39,9 @@ class MoEBlock(nn.Module):
             cache.update_response(out_r)
             return out
 
-        out_full = torch.zeros_like(x)
+        # Both halves are always written before this tensor is returned — use empty.
+        out_full = torch.empty_like(x)
+
 
         if is_prompt_up:
             out_p = self._compute_moe(x[:, :prompt_len])
@@ -66,19 +68,57 @@ class MoEBlock(nn.Module):
         return out_full
 
     def _compute_moe(self, x: torch.Tensor) -> torch.Tensor:
-        """Helper to run the MoE calculation for a given input tensor x."""
+        """
+        Sparse MoE dispatch with a single CPU-GPU sync.
+
+        Original approach used ``F.one_hot + torch.where`` which forces one
+        CPU-GPU synchronisation per expert (NE=64 syncs per layer per step).
+        This version does ONE sync (``bincount().cpu()``) to bring token counts
+        to CPU, then slices a pre-sorted contiguous buffer — zero additional
+        syncs for the 64 expert forward passes.
+        """
         B, T, _ = x.shape
-        x_flat = x.view(B * T, H)
-        routing_weights = F.softmax(self.gate(x_flat), dim=-1, dtype=torch.float32)
-        routing_weights, selected_experts = torch.topk(routing_weights, TOPK, dim=-1)
-        routing_weights = routing_weights.to(x.dtype)
-        
-        out = torch.zeros_like(x_flat)
-        expert_mask = F.one_hot(selected_experts, num_classes=NE).permute(2, 1, 0)
-        
-        for expert_idx in range(NE):
-            idx, top_x = torch.where(expert_mask[expert_idx])
-            h = self.experts[expert_idx](x_flat[top_x]) * routing_weights[top_x, idx, None]
-            out.index_add_(0, top_x, h.to(x.dtype))
-            
+        N = B * T
+        x_flat = x.view(N, H)
+
+        # ── Gate ──────────────────────────────────────────────────────────────
+        gate_logits = self.gate(x_flat)                                   # [N, NE]
+        routing_weights = F.softmax(gate_logits, dim=-1, dtype=torch.float32)
+        top_weights, top_experts = torch.topk(routing_weights, TOPK, dim=-1)  # [N, TOPK]
+        top_weights = top_weights.to(x.dtype)
+
+        # ── Build dispatch table ───────────────────────────────────────────────
+        # Each of the N×TOPK dispatch entries maps to (token_index, expert_index, weight)
+        token_2d   = torch.arange(N, device=x.device).unsqueeze(1).expand(N, TOPK)
+        token_flat = token_2d.reshape(-1)        # [N*TOPK]
+        expert_flat = top_experts.reshape(-1)     # [N*TOPK]
+        weight_flat = top_weights.reshape(-1)     # [N*TOPK]
+
+        # Sort by expert so each expert's tokens are contiguous in memory
+        perm           = torch.argsort(expert_flat, stable=True)
+        expert_sorted  = expert_flat[perm]        # [N*TOPK]
+        token_sorted   = token_flat[perm]         # [N*TOPK]
+        weight_sorted  = weight_flat[perm]        # [N*TOPK]
+
+        # Gather token features in sorted (expert-contiguous) order
+        x_dispatched = x_flat[token_sorted]       # [N*TOPK, H]
+
+        # ── ONE CPU-GPU sync: bring per-expert token counts to CPU ─────────────
+        counts = torch.bincount(expert_sorted, minlength=NE).cpu()  # single sync
+
+        # ── Expert forward passes: contiguous slice per expert, no extra syncs ──
+        out_dispatched = torch.empty_like(x_dispatched)
+        offset = 0
+        for e_idx in range(NE):
+            n_e = counts[e_idx].item()    # CPU read — no GPU sync
+            if n_e > 0:
+                out_dispatched[offset : offset + n_e] = \
+                    self.experts[e_idx](x_dispatched[offset : offset + n_e])
+            offset += n_e
+
+        # ── Weight and accumulate ──────────────────────────────────────────────
+        out_dispatched.mul_(weight_sorted.unsqueeze(-1))
+        out = torch.zeros(N, H, device=x.device, dtype=x.dtype)
+        out.index_add_(0, token_sorted, out_dispatched)
+
         return out.view(B, T, H)

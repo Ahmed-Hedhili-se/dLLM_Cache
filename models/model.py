@@ -36,8 +36,12 @@ class LLaDAMoESmall(nn.Module):
                 embed_cache.update_prompt(x[:, :prompt_len])
             else:
                 cached_prompt_embeds = embed_cache.get_prompt()
-                response_embeds = self.embed_tokens(input_ids[:, prompt_len:])
-                x = torch.cat([cached_prompt_embeds, response_embeds], dim=1)
+                if cached_prompt_embeds is None:
+                    x = self.embed_tokens(input_ids)
+                    embed_cache.update_prompt(x[:, :prompt_len])
+                else:
+                    response_embeds = self.embed_tokens(input_ids[:, prompt_len:])
+                    x = torch.cat([cached_prompt_embeds, response_embeds], dim=1)
         else:
             x = self.embed_tokens(input_ids)
             

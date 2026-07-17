@@ -22,7 +22,7 @@ class EmbeddingCache:
     def __init__(self):
         self.prompt_embeds: Optional[torch.Tensor] = None
     def update_prompt(self, embeds: torch.Tensor):
-        self.prompt_embeds = embeds.clone().detach() if embeds is not None else None
+        self.prompt_embeds = embeds.detach() if embeds is not None else None
     def get_prompt(self) -> Optional[torch.Tensor]:
         return self.prompt_embeds
     def reset(self)  :

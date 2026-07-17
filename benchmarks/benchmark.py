@@ -45,9 +45,6 @@ else:
 
 from diffusion import DiffusionScheduler, DiffusionGenerator, DiffusionInference
 
-
-# ── Fixed: SEQ_LEN must be > prompt_len (128) so editable region is non-empty.
-# Old value (32) caused editable=[] and _denoise_step short-circuited at step>0.
 SEQ_LEN = 256
 GEN_LENGTH = 16
 CORRECTNESS_GEN_LENGTH = 64  # Larger gen_length for correctness sweeps
@@ -381,6 +378,7 @@ def main():
     cached_engine._model_fn = types.MethodType(lambda self, tokens: cached_model_fn(tokens), cached_engine)
 
     def reset_caches_fn():
+        # Reset all feature caches
         if caches.get('embed') is not None:
             caches['embed'].reset()
         for layer_cache in caches.get('layers', []):
@@ -388,6 +386,11 @@ def main():
                 layer_cache['attn'].reset()
             if layer_cache.get('mlp') is not None:
                 layer_cache['mlp'].reset()
+        # Reset the step counter so the next cached_model_fn call is treated
+        # as the initial step (k_step = NUM_DIFFUSION_STEPS).  Without this,
+        # a stale _current_step from a previous benchmark phase produces a
+        # non-initial k_step on an empty cache, causing get_prompt() -> None.
+        cached_engine.generator._current_step = 0
 
     tokens = prompt_ids + [MASK_ID] * (SEQ_LEN - len(prompt_ids))
     editable = list(range(len(prompt_ids), SEQ_LEN))

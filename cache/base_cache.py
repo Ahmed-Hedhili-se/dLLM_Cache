@@ -16,12 +16,14 @@ class BaseCache:
         self.response_cache: Optional[torch.Tensor] = None
         self.prompt_len: int = 0
 
-    def update_prompt ( self, features: torch.Tensor, prompt_len: int) -> None:
-        self.prompt_cache = features.clone().detach() if features is not None else None
+    def update_prompt(self, features: torch.Tensor, prompt_len: int) -> None:
+        # .detach() is sufficient in no_grad context — the storage stays alive
+        # as long as prompt_cache holds the reference; no clone needed.
+        self.prompt_cache = features.detach() if features is not None else None
         self.prompt_len = prompt_len
 
     def update_response(self, features: torch.Tensor) -> None:
-        self.response_cache = features.clone().detach() if features is not None else None
+        self.response_cache = features.detach() if features is not None else None
 
     def update_response_partial(self, partial_features: torch.Tensor, update_indices: torch.Tensor) -> None:
         raise NotImplementedError("Partial update is specific to the tensor shape and logic of the subclass.")

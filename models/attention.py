@@ -50,7 +50,8 @@ class Attention(nn.Module):
         is_prompt_up = cache_manager.is_prompt_update(k_step)
         is_resp_full = cache_manager.is_response_full_update(k_step)
         
-        attn_out_full = torch.zeros(B, T, H, device=x.device, dtype=x.dtype)
+        # Both halves are always written before this tensor is read — use empty.
+        attn_out_full = torch.empty(B, T, H, device=x.device, dtype=x.dtype)
         update_indices = None
         
         
@@ -162,10 +163,13 @@ class Attention(nn.Module):
         elif needs_resp_attn == 'partial':
             out_r_partial = F.scaled_dot_product_attention(q_partial_t, k_full_t, v_full_t, attn_mask=None, is_causal=False)
             attn_out_r_partial = self.o_proj(out_r_partial.transpose(1, 2).reshape(B, -1, H))
-            
-            cache.update_response_partial(k_partial_rope, v_r_all_seq, attn_out_r_partial, indices_resp)
-            
+
+            # k_r_seq is already the fully-scattered K_r (built at line 141 above).
+            # Pass it directly so the cache stores it without a second scatter.
+            cache.update_response_partial(k_r_seq, v_r_all_seq, attn_out_r_partial, indices_resp)
+
             _, _, attn_out_r = cache.get_response()
             attn_out_full[:, prompt_len:, :] = attn_out_r
+
             
         return attn_out_full, update_indices

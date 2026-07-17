@@ -27,17 +27,28 @@ class AttentionCache:
         self._attn_out.update_response(attn_out)
 
     def update_response_partial(
-        self, partial_k: torch.Tensor, new_v: torch.Tensor, partial_attn_out: torch.Tensor , indices : torch.Tensor
+        self, k_r_full: torch.Tensor, new_v: torch.Tensor, partial_attn_out: torch.Tensor, indices: torch.Tensor
     ) -> None:
-        """  Adaptive partial update. Overwrites the full V_r cache (Section A.5
-        of the paper) but only scatters K and AttnOut for the selected tokens.
         """
-        if self._k.response_cache is None or self._attn_out.response_cache is None:
+        Partial cache update after adaptive token selection.
+
+        ``k_r_full`` is the **already-scattered** full-response K tensor
+        (built in attention.py before SDPA so it is already correct — storing
+        it here avoids a second scatter that was previously wasted).
+        V_r is fully replaced (Section A.5).  Only the selected attention
+        outputs are scattered into the cached attention-output tensor.
+        """
+        if self._attn_out.response_cache is None:
             raise RuntimeError("Cannot perform partial update before a full refresh has initialized the cache.")
 
+        # K: store the already-scattered tensor directly (no second scatter)
+        self._k.response_cache = k_r_full.detach()
+        # V: full replacement
         self._v.update_response(new_v)
-        self._k.response_cache = scatter_tokens(self._k.response_cache, partial_k, indices)
-        self._attn_out.response_cache = scatter_tokens(self._attn_out.response_cache, partial_attn_out, indices)
+        # AttnOut: scatter only the updated positions
+        self._attn_out.response_cache = scatter_tokens(
+            self._attn_out.response_cache, partial_attn_out, indices
+        )
 
 
 
