@@ -96,8 +96,10 @@ class Attention(nn.Module):
             needs_resp_attn = 'full'
         else:
             
-            v_r_all = self.v_proj(response_x).view(B, T_r, KVH, HD).transpose(1, 2) 
-            v_r_all_seq = v_r_all.transpose(1, 2) 
+            # Compute full V_r in seq-first format for the token tracker and cache.
+            # Build head-first V_r for SDPA in one step (no round-trip through two transposes).
+            v_r_all_seq = self.v_proj(response_x).view(B, T_r, KVH, HD)  # [B, T_r, KVH, HD]
+            v_r_t = v_r_all_seq.transpose(1, 2)                           # [B, KVH, T_r, HD]
             
             tracker = TokenTracker(update_ratio=update_ratio)
             cached_v_response = cache.get_cached_v_response()
@@ -135,7 +137,6 @@ class Attention(nn.Module):
                 
                 
                 k_r_cached_seq, v_r_cached_seq, _ = cache.get_response()
-                v_r_t = v_r_all_seq.transpose(1, 2)
                 k_r_seq = scatter_tokens(k_r_cached_seq, k_partial_rope, indices_resp)
                 k_r_t = k_r_seq.transpose(1, 2)
                 
