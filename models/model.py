@@ -33,7 +33,7 @@ class LLaDAMoESmall(nn.Module):
             
             if is_initial or is_prompt_up:
                 x = self.embed_tokens(input_ids)
-                embed_cache.update_prompt(x[:, :prompt_len], prompt_len)
+                embed_cache.update_prompt(x[:, :prompt_len])
             else:
                 cached_prompt_embeds = embed_cache.get_prompt()
                 response_embeds = self.embed_tokens(input_ids[:, prompt_len:])
