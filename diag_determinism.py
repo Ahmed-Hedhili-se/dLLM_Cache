@@ -18,11 +18,11 @@ model = LLaDAMoESmall().to(torch.bfloat16).to(device).eval()
 # Load weights if available
 import os
 if os.path.isdir('weights'):
-    from models.loader import load_weights
-    load_weights(model, 'weights')
-    print("Weights loaded.")
+    from models.loader import load_hf_weights_into_custom_model
+    load_hf_weights_into_custom_model(model, 'weights')
 else:
     print("Using random weights (no weights/ dir found).")
+
 
 input_ids = torch.randint(0, 1000, (1, 256), device=device)
 input_ids[0, :128] = torch.arange(1, 129)
