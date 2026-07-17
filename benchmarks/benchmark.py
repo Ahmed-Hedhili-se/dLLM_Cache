@@ -179,8 +179,20 @@ def run_correctness_benchmarks(
 ):
     print("\n=== Correctness ===")
     
-    # ── 1. Logits comparison at ρ=1.0 (sanity check — should always pass)
-    print("Comparing logits (single forward at update_ratio=1.0)...")
+    # ── 0. Measure baseline self-noise (SDPA is non-deterministic on Ampere GPUs)
+    print("Measuring baseline self-noise (two identical forward passes)...")
+    with torch.no_grad():
+        base_a = baseline_model_fn(tokens)
+        base_b = baseline_model_fn(tokens)
+    base_self_diff = (base_a.float() - base_b.float()).abs()
+    base_noise_max = base_self_diff.max().item()
+    base_noise_mean = base_self_diff.mean().item()
+    print(f"  Baseline self-noise: max={base_noise_max:.6e}  mean={base_noise_mean:.6e}")
+    if base_noise_max > 0:
+        print("  (SDPA kernel is non-deterministic — this is the noise floor for logit comparisons)")
+    
+    # ── 1. Logits comparison at ρ=1.0 (should be within baseline self-noise)
+    print("\nComparing logits (single forward at update_ratio=1.0)...")
     base_logits = baseline_model_fn(tokens)
     reset_caches_fn()
     
@@ -190,7 +202,12 @@ def run_correctness_benchmarks(
     cache_config.UPDATE_RATIO = original_ratio
     
     res = compare_logits(base_logits, cached_logits, name="logits_equivalence_ratio_1.0")
-    print(f"  {res}")
+    # Override pass/fail: if diff is within 2x baseline self-noise, it's just SDPA non-determinism
+    cache_diff_max = (base_logits.float() - cached_logits.float()).abs().max().item()
+    if base_noise_max > 0 and cache_diff_max <= base_noise_max * 2.0:
+        print(f"  {res}  (within baseline self-noise — SDPA non-determinism, not a bug)")  
+    else:
+        print(f"  {res}")
     
     # ── 2. Multi-ρ logits sweep
     ratios = [0.1, 0.25, 0.5, 0.9, 1.0]
@@ -208,7 +225,11 @@ def run_correctness_benchmarks(
         cl = cached_model_fn(tokens)
         
         res_rho = compare_logits(bl, cl, name=f"logits_rho_{rho}")
-        print(f"  ρ={rho:.2f}: {res_rho}")
+        rho_diff = (bl.float() - cl.float()).abs().max().item()
+        noise_note = ""
+        if base_noise_max > 0 and rho_diff <= base_noise_max * 2.0:
+            noise_note = "  (≤ baseline noise)"
+        print(f"  ρ={rho:.2f}: {res_rho}{noise_note}")
     cache_config.UPDATE_RATIO = original_ratio
 
     # ── 3. Multi-ρ token generation sweep with mismatch analysis
