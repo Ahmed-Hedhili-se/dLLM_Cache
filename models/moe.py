@@ -39,7 +39,7 @@ class MoEBlock(nn.Module):
             cache.update_response(out_r)
             return out
 
-        # Both halves are always written before this tensor is returned — use empty.
+
         out_full = torch.empty_like(x)
 
 
